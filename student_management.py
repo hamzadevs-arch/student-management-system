@@ -1,4 +1,24 @@
-students = []
+import json
+
+FILE_NAME = "students.json"
+
+
+def load_students():
+    try:
+        with open(FILE_NAME, "r") as file:
+            students = json.load(file)
+            return students
+
+    except FileNotFoundError:
+        return []
+
+
+def save_students():
+    with open(FILE_NAME, "w") as file:
+        json.dump(students, file, indent=4)
+
+
+students = load_students()
 
 
 def add_student():
@@ -19,6 +39,8 @@ def add_student():
     }
 
     students.append(student)
+
+    save_students()
 
     print("Student added successfully!")
 
@@ -72,6 +94,8 @@ def update_student():
             student["email"] = input("Enter new email: ")
             student["course"] = input("Enter new course: ")
 
+            save_students()
+
             print("Student updated successfully!")
             return
 
@@ -86,6 +110,9 @@ def delete_student():
     for student in students:
         if student["id"] == student_id:
             students.remove(student)
+
+            save_students()
+
             print("Student deleted successfully!")
             return
 
@@ -95,10 +122,8 @@ def delete_student():
 def main():
     while True:
 
-        print("\n==============================")
         print("   STUDENT MANAGEMENT SYSTEM")
-        print("==============================")
-
+  
         print("1. Add Student")
         print("2. View Students")
         print("3. Search Student")
