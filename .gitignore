@@ -1,0 +1,4 @@
+students.db
+students.json
+__pycache__/
+*.pyc
