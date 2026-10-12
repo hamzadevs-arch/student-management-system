@@ -15,6 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from reports import report_analytics, student_report, summary_pdf, student_pdf, summary_csv
+from academic_assistant import PROMPTS, ADMIN_PROMPTS, answer_question, optionally_polish_aggregate
 from pydantic import BaseModel, Field, field_validator
 
 from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
@@ -24,7 +25,7 @@ from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
 DB_PATH = Path(os.getenv("STUDENTS_DB", Path(__file__).resolve().parent.parent / "students.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="CampusFlow API", version="3.0.0")
+app = FastAPI(title="CampusFlow API", version="4.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -511,3 +512,37 @@ def download_student_pdf(student_id: int, semester: str = "", start_date: date |
     return Response(student_pdf(data, semester.strip(), start_date, end_date), media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename=campusflow-student-{student_id}.pdf",
                              "Cache-Control": "no-store"})
+
+
+# ------------------- Phase 10: read-only academic assistant -------------------
+
+class AssistantQuestion(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str):
+        value = " ".join(value.split())
+        if len(value) < 3:
+            raise ValueError("Please enter a question with at least three characters")
+        return value
+
+
+@app.get("/api/assistant/capabilities")
+def assistant_capabilities(user=Depends(current_user)):
+    return {
+        "mode": "llm_available" if os.getenv("OPENAI_API_KEY") else "local",
+        "privacy": "Only aggregated numeric academic summaries can be polished by the optional LLM; student-specific results never leave your server.",
+        "prompts": PROMPTS + (ADMIN_PROMPTS if user["role"] == "admin" else []),
+        "role": user["role"],
+    }
+
+
+@app.post("/api/assistant/ask")
+def assistant_ask(payload: AssistantQuestion, user=Depends(current_user)):
+    # Only the vetted query templates in academic_assistant.py may read SQLite.
+    # The chat never writes to the database or executes user-provided SQL.
+    with db() as conn:
+        result = answer_question(conn, payload.question, user["role"])
+    result = optionally_polish_aggregate(result)
+    return result

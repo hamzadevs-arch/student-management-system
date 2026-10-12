@@ -1,8 +1,63 @@
-# CampusFlow — Phase 9: Advanced Academic Reports & Analytics
+# CampusFlow — Phase 10: AI-Enhanced Academic Assistant + Phase 9 Reports
 
 **Full-stack Student Management System:** React 19 + Vite + Tailwind CSS + Recharts + FastAPI + SQLite + ReportLab
 
-This is a working upgrade to **CampusFlow Phase 8**, not a separate demo app. Admin and teacher login, team access, CRUD, attendance, and marks are preserved.
+**Phase 10 added:** A secure, read-only academic chat assistant in the existing CampusFlow sidebar. The assistant uses locally computed academic facts and works without an API key. Optional OpenAI-based wording is available for aggregate summaries only.
+
+This is a working upgrade to **CampusFlow Phase 9**, not a separate demo app. Admin and teacher login, team access, CRUD, attendance, marks, PDF/CSV reports, and analytics are preserved. The Phase 10 chat does not change your database tables.
+
+## What's new in Phase 10
+
+- **AI Assistant** sidebar page with a polished chat, suggested questions, and answer cards
+- Ask about student counts, subject averages, attendance, program performance, and semesters
+- **Administrator-only** student-specific answers, top-five student averages, and low-attendance lists
+- Permission checks enforced by FastAPI, not just by hidden buttons
+- Safe, parameterized, predefined `SELECT` queries: user input never runs as SQL
+- No API key necessary: the default mode uses **local intent matching and deterministic data insights**, not a general-purpose LLM
+- **Optional** language-model wording for aggregate verified answers via the OpenAI API (explicit opt-in). Individual student details are never sent to the API.
+- Chat history exists only while the React page is open, not in your database
+
+### Phase 10 example questions
+
+```text
+How many students are enrolled?
+How many students in BS Computer Science?
+What is the overall average score?
+Which subject has the highest average marks?
+What is the attendance rate?
+Show Semester 4 performance
+Compare performance by program
+Show Ali Ahmed's marks                        (admin only)
+Who are the top 5 students by average marks?    (admin only)
+Which students have attendance below 75%?       (admin only)
+```
+
+**Important:** The assistant does not answer every possible sentence. It supports the patterns listed above and will explain when a question is outside its scope. For true LLM-assisted *wording* of verified aggregates, see the optional section below; the model cannot generate SQL or modify records.
+
+### Phase 10 optional OpenAI wording (not required)
+
+The local assistant works without any API key. For an optional language-model rephrasing of **aggregate** academic facts:
+
+1. With permission to use an API account and only with data suitable for external processing, open the **backend** terminal.
+2. Run `python -m pip install -r requirements-llm.txt`.
+3. Set the key **only in the backend terminal's environment**, never inside `frontend/src` or committed files:
+
+```powershell
+$env:OPENAI_API_KEY = "your-personal-api-key"
+$env:OPENAI_MODEL = "gpt-4.1-mini"
+python -m uvicorn main:app --reload
+```
+
+The backend sends **verified aggregate summaries**, such as subject/program labels and statistical values, to the model. **Individual student names, email addresses, student IDs, and raw rows are never sent**, and the original question is not sent. API calls may have a cost. If unavailable, the app returns the verified local answer. For school/real-student deployments, keep this optional feature off until organizational privacy approvals are obtained.
+
+### Test Phase 10 in CampusFlow
+
+1. Sign in as your existing admin or teacher.
+2. Open **AI Assistant** in the sidebar.
+3. Click **How many students are enrolled?**; it should reflect your live `students.db`.
+4. Ask **What is the attendance rate?**. If none is entered, the answer should say no records are available.
+5. As an **admin**, ask **Show Ali Ahmed's marks** (replace with a name in your database).
+6. Sign in as a **teacher** and try the same name-specific question: it should be denied in the assistant.
 
 ## What's new in Phase 9
 
@@ -15,7 +70,7 @@ This is a working upgrade to **CampusFlow Phase 8**, not a separate demo app. Ad
 - The **full student directory CSV** from Phase 8 remains available to admins
 - New optional `semester` fields for marks and attendance records
 - **Non-destructive SQLite migration**: older Phase 8 marks and attendance are tagged **Unassigned**
-- Six automated backend tests covering the Phase 8 and Phase 9 features, including permissions
+- Twelve automated backend tests across Phases 8–10, including assistant permissions
 
 ### A data-model limitation to understand
 
@@ -37,18 +92,18 @@ Older marks and attendance are not assigned to a semester automatically. They ap
 
 The API checks permission on the backend; hiding an export button is not considered sufficient protection.
 
-## Install Phase 9 without losing your data (Windows + VS Code)
+## Install Phase 10 without losing your data (Windows + VS Code)
 
 **First: Keep a backup of your existing `students.db` database.**
 
-1. In File Explorer, open your **Phase 8** folder and locate `campusflow/students.db`. (The DB is beside `backend` and `frontend`.)
-2. Copy `students.db` to a safe backup location. Do **not** delete your Phase 8 folder yet.
-3. Extract `CampusFlow_Phase9_Advanced_Reports.zip` into a separate folder.
+1. In File Explorer, open your **Phase 9** folder and locate `campusflow/students.db`. (The DB is beside `backend` and `frontend`.)
+2. Copy `students.db` to a safe backup location. Do **not** delete your Phase 9 folder yet.
+3. Extract `CampusFlow_Phase10_Academic_AI_Assistant.zip` into a separate folder.
 4. Open the extracted `campusflow` folder in VS Code (`File → Open Folder`).
-5. Copy your **original** Phase 8 `students.db` into this new **Phase 9 `campusflow`** folder. Do not copy `students.db` into `backend` or `frontend`.
+5. Copy your **original** Phase 9 `students.db` into this new **Phase 10 `campusflow`** folder. Do not copy `students.db` into `backend` or `frontend`.
 6. Confirm you now see `campusflow/backend`, `campusflow/frontend`, and `campusflow/students.db`.
 
-Phase 9 creates two missing `semester` columns when you start the backend. It does **not** remove students, saved marks, attendance, admins, teachers, or authentication data.
+Phase 10 does **not** introduce database migrations or remove students, saved marks, attendance, admins, teachers, or authentication data.
 
 ### Terminal 1 — backend
 
@@ -78,7 +133,7 @@ Open **http://127.0.0.1:5173/** and sign in.
 
 If you are creating an entirely new project without an existing `students.db`, run `python create_admin.py` from `backend` once before signing in; use your own strong unique password.
 
-## Test Phase 9
+## Test Phase 9 reports (still included)
 
 1. Sign in as **admin**.
 2. Add a student if your database has none.
@@ -106,19 +161,23 @@ The test suite uses temporary database files, not your own `students.db`.
 ```text
 campusflow/
 ├── backend/
+│   ├── academic_assistant.py   # NEW: read-only academic QA
 │   ├── main.py                # Existing CRUD/auth + new API endpoints
 │   ├── reports.py             # Reporting aggregates, CSV/PDF generation
 │   ├── security.py            # Phase 8 authentication and roles
 │   ├── create_admin.py
 │   ├── requirements.txt
 │   ├── requirements-dev.txt
+│   ├── requirements-llm.txt   # Optional external model dependency
 │   └── tests/
 │       ├── test_phase8.py
-│       └── test_phase9.py
+│       ├── test_phase9.py
+│       └── test_phase10.py
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx            # Workspace, navigation, marks/attendance forms
-│   │   ├── ReportsPage.jsx    # New Phase 9 reports UI
+│   │   ├── ReportsPage.jsx    # Phase 9 reports UI
+│   │   ├── AssistantPage.jsx  # NEW: Phase 10 chat UI
 │   │   ├── AccountsPage.jsx
 │   │   ├── AuthScreen.jsx
 │   │   ├── api.js
@@ -127,18 +186,19 @@ campusflow/
 │   └── vite.config.js
 ├── README.md
 ├── PHASE9_CHANGELOG.md
+├── PHASE10_CHANGELOG.md
 └── .gitignore
 ```
 
-## Add Phase 9 to your existing GitHub project
+## Add Phase 10 to your existing GitHub project
 
-To keep the existing history in `hamzadevs-arch/student-management-system`, copy the new **`campusflow/` source files** into the `campusflow/` folder of your **cloned original GitHub repository**, replacing the older Phase 8 source files. Do not copy local `students.db`, `.env` files, or `node_modules`. From your clone:
+To keep the existing history in `hamzadevs-arch/student-management-system`, copy the new **`campusflow/` source files** into the `campusflow/` folder of your **cloned original GitHub repository**, updating the previous Phase 9 source files. Do not copy local `students.db`, `.env` files, or `node_modules`. From your clone:
 
 ```powershell
 git add campusflow
 git status
 # Confirm no databases, credentials or node_modules are staged.
-git commit -m "Phase 9: Add academic reports, semester analytics and PDF exports"
+git commit -m "Phase 10: Add secure academic AI assistant"
 git push origin main
 ```
 
@@ -154,4 +214,4 @@ Never force-push or initialize a new Git history inside an extracted ZIP.
 
 ## Next phase
 
-**Phase 10 — AI Academic Assistant**: permission-aware natural-language questions over read-only academic data.
+**Phase 11 — Machine Learning**: optional explainable academic performance predictions, with proper train/test validation and safeguards against misleading results.

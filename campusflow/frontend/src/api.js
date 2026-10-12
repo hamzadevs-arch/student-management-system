@@ -91,3 +91,10 @@ api.downloadReport = async (kind, filters, studentId='') => {
   }
   return {blob: await response.blob(), filename};
 };
+
+// Phase 10: authenticated, read-only academic assistant.
+api.assistantCapabilities = () => request('/assistant/capabilities');
+api.askAssistant = question => request('/assistant/ask', {
+  method: 'POST',
+  body: JSON.stringify({ question }),
+});
