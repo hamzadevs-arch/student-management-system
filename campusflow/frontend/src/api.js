@@ -62,3 +62,32 @@ export const api = {
     return res.blob();
   },
 };
+
+// Phase 9: authenticated report endpoints. Teachers can see aggregated analytics,
+// while administrator-only download endpoints are enforced on the server.
+const reportParams = filters => {
+  const args = new URLSearchParams();
+  Object.entries(filters).forEach(([key,value]) => {if (value) args.set(key, value);});
+  return args.toString();
+};
+api.reportAnalytics = filters => request(`/reports/analytics?${reportParams(filters)}`);
+api.downloadReport = async (kind, filters, studentId='') => {
+  const path = kind === 'pdf' ? '/reports/summary.pdf'
+    : kind === 'csv' ? '/reports/summary.csv'
+    : `/reports/student/${encodeURIComponent(studentId)}.pdf`;
+  const filename = kind === 'pdf' ? 'campusflow-academic-report.pdf'
+    : kind === 'csv' ? 'campusflow-program-summary.csv'
+    : `campusflow-student-${studentId}.pdf`;
+  const token = window.sessionStorage.getItem(SESSION_KEY);
+  let response;
+  try {response = await fetch(`/api${path}?${reportParams(filters)}`, {
+    headers: token ? {Authorization:`Bearer ${token}`} : {}
+  });} catch {throw new Error('Cannot reach FastAPI. Start the backend on port 8000.');}
+  if (response.status === 401) {clearSession();window.dispatchEvent(new Event('campusflow-session-expired'));}
+  if (!response.ok) {
+    let msg = `Download failed (${response.status})`;
+    try { const data=await response.json(); if (typeof data.detail === 'string') msg=data.detail; } catch {}
+    throw new Error(msg);
+  }
+  return {blob: await response.blob(), filename};
+};

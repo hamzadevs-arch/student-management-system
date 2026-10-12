@@ -1,107 +1,72 @@
-# CampusFlow · Phase 8 — Accounts & Permissions
+# CampusFlow — Phase 9: Advanced Academic Reports & Analytics
 
-**React + Tailwind CSS + Recharts + Lucide React + Python FastAPI + SQLite**
+**Full-stack Student Management System:** React 19 + Vite + Tailwind CSS + Recharts + FastAPI + SQLite + ReportLab
 
-This release extends the Phase 7 CampusFlow dashboard with real user authentication and role-based access, while keeping the dashboard design and existing SQLite student records.
+This is a working upgrade to **CampusFlow Phase 8**, not a separate demo app. Admin and teacher login, team access, CRUD, attendance, and marks are preserved.
 
-## New in Phase 8
+## What's new in Phase 9
 
-- Polished **sign-in screen** with no hard-coded demo credentials
-- **Admin / Teacher** roles, enforced inside FastAPI
-- Admin-only **Team access** screen to create, enable, or disable teachers
-- Passwords hashed using Python's PBKDF2-HMAC-SHA256 with random per-user salts
-- Random, expiring (8-hour) login tokens; the SQLite DB contains only their SHA-256 digests
-- Temporary account lockout after 5 consecutive wrong passwords
-- Frontend hides actions unavailable to teachers, **and** backend rejects forbidden requests
-- Existing `students`, `marks`, and `attendance` tables remain intact
+- A polished **Academic reporting** screen accessible from **Reports** in the existing sidebar
+- Program and semester filters, plus an optional **attendance date range**
+- Statistics: enrolled students, recorded assessments, academic average, attendance rate
+- Interactive Recharts for semester comparisons, subject performance, and monthly attendance
+- Grade distribution and program performance table
+- **Admin-only** downloadable academic summary **PDF**, program summary **CSV**, and individual student **PDF**
+- The **full student directory CSV** from Phase 8 remains available to admins
+- New optional `semester` fields for marks and attendance records
+- **Non-destructive SQLite migration**: older Phase 8 marks and attendance are tagged **Unassigned**
+- Six automated backend tests covering the Phase 8 and Phase 9 features, including permissions
 
-### Permission matrix
+### A data-model limitation to understand
 
-| Action | Admin | Teacher |
+The Phase 8 `marks` table stores subjects and scores, but **does not store an assessment date**. Therefore, report **date** filters apply to *attendance only*, not marks. The *semester* filter applies to both records after Phase 9.
+
+Older marks and attendance are not assigned to a semester automatically. They appear under **Unassigned** until new entries are recorded with a semester. This avoids inventing academic data.
+
+### Permissions
+
+| Feature | Admin | Teacher |
 |---|:---:|:---:|
-| View dashboard, students, marks and attendance | ✓ | ✓ |
-| Add / update / delete student records | ✓ | — |
-| Record marks | ✓ | ✓ |
-| Record attendance | ✓ | ✓ |
-| Export student CSV (including email addresses) | ✓ | — |
-| Create or disable teacher accounts | ✓ | — |
+| View reports and charts | Yes | Yes |
+| Filter semesters, programs and dates | Yes | Yes |
+| Download academic summary PDF and program CSV | Yes | No |
+| Download an individual student PDF | Yes | No |
+| Download full student directory CSV | Yes | No |
+| Record marks and attendance with semester | Yes | Yes |
+| Manage students and teacher accounts | Yes | No |
 
-This is a local development project, not a production-hardened school system. Do not expose it on the public internet or upload real student data to GitHub. Production deployment requires HTTPS, stronger secure session handling, audit logs, recovery flows, and security review.
+The API checks permission on the backend; hiding an export button is not considered sufficient protection.
 
-## Before you start
+## Install Phase 9 without losing your data (Windows + VS Code)
 
-Install:
-- **Python 3.10+** (`python --version`)
-- **Node.js 20.19+ or 22.12+** (`node --version`)
-- VS Code
+**First: Keep a backup of your existing `students.db` database.**
 
-Extract the ZIP. You should see:
+1. In File Explorer, open your **Phase 8** folder and locate `campusflow/students.db`. (The DB is beside `backend` and `frontend`.)
+2. Copy `students.db` to a safe backup location. Do **not** delete your Phase 8 folder yet.
+3. Extract `CampusFlow_Phase9_Advanced_Reports.zip` into a separate folder.
+4. Open the extracted `campusflow` folder in VS Code (`File → Open Folder`).
+5. Copy your **original** Phase 8 `students.db` into this new **Phase 9 `campusflow`** folder. Do not copy `students.db` into `backend` or `frontend`.
+6. Confirm you now see `campusflow/backend`, `campusflow/frontend`, and `campusflow/students.db`.
 
-```text
-campusflow/
-├── backend/
-│   ├── main.py
-│   ├── security.py
-│   ├── create_admin.py
-│   ├── requirements.txt
-│   ├── requirements-dev.txt
-│   ├── seed_demo.py
-│   └── tests/
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── AuthScreen.jsx
-│   │   ├── AccountsPage.jsx
-│   │   ├── api.js
-│   │   └── styles.css
-│   ├── package.json
-│   └── vite.config.js
-├── README.md
-└── .gitignore
-```
+Phase 9 creates two missing `semester` columns when you start the backend. It does **not** remove students, saved marks, attendance, admins, teachers, or authentication data.
 
-### Keep your old database
+### Terminal 1 — backend
 
-**Back up `students.db` before you replace any files.**
-
-If you're upgrading from Phase 7, keep the existing `students.db` in the **root `campusflow/` folder** (next to `backend/` and `frontend/`). Don't delete it. Phase 8 creates only the missing `users` and `sessions` tables.
-
-If you don't have a database, CampusFlow creates a new empty `students.db` automatically.
-
-## Run the project in VS Code — Windows
-
-**Open the `campusflow` folder in VS Code**, then select **Terminal → New Terminal**.
-
-### Terminal 1: backend (Python)
-
-Run these **one at a time**:
+From the new `campusflow` folder:
 
 ```powershell
 cd backend
 python -m pip install -r requirements.txt
-```
-
-**First time only**: create your own administrator account:
-
-```powershell
-python create_admin.py
-```
-
-Choose an administrator username and a **unique password of at least 12 characters**. The terminal will not show your password while typing it. No password is provided or embedded in the repository.
-
-Start the API:
-
-```powershell
 python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Leave this terminal running. You should see `Uvicorn running on http://127.0.0.1:8000`.
+Keep this terminal open. Expected: `Uvicorn running on http://127.0.0.1:8000`.
 
-> If you already ran the server before creating the administrator, you can open a *third* terminal to run `python create_admin.py` from `backend/`. You only need to run it once.
+**Do not rerun `create_admin.py` if you copied your existing Phase 8 database.** Log in with your existing admin username/password.
 
-### Terminal 2: frontend (React)
+### Terminal 2 — frontend
 
-Click the **+** button at the top-right of VS Code's terminal panel to create a second terminal. It should start in the project's root folder. Run:
+Open a **new** VS Code terminal and run from the new `campusflow` folder:
 
 ```powershell
 cd frontend
@@ -109,44 +74,84 @@ npm install
 npm run dev
 ```
 
-Leave this terminal running. Open **http://127.0.0.1:5173** in Chrome or Edge.
+Open **http://127.0.0.1:5173/** and sign in.
 
-You'll see the new CampusFlow login screen. Sign in using the **username/password you chose in Terminal 1**.
+If you are creating an entirely new project without an existing `students.db`, run `python create_admin.py` from `backend` once before signing in; use your own strong unique password.
 
-**After signing in as admin**, choose **Team access** in the sidebar to add a teacher. Teachers use the same login screen; teacher permissions are enforced by FastAPI.
+## Test Phase 9
 
-If Terminal 2 says the `frontend` folder doesn't exist, you may be inside `backend/`. Run `cd ..` before `cd frontend`.
+1. Sign in as **admin**.
+2. Add a student if your database has none.
+3. Open **Grades & marks** → **Add marks** → select **Semester 1** → save a subject score.
+4. Open **Attendance** → **Record attendance** → select **Semester 1** → save present or absent status.
+5. Open **Reports** → select the semester → inspect the statistics and charts.
+6. Click **Download PDF**, **Program CSV**, or select a student and click **Student PDF**.
+7. Optional: sign in as a teacher and verify charts are visible but exports are restricted.
 
-## macOS / Linux
+The Reports dropdown also has **Unassigned** for historical records; leaving it at **All semesters** includes all records.
 
-Run the same commands in two terminals. Depending on your machine, `python3` may be required instead of `python`.
+## Automated tests (optional)
 
-## API docs
-
-When the backend is running: http://127.0.0.1:8000/docs
-
-Most endpoints require an `Authorization: Bearer <token>` header. Login at `POST /api/auth/login` to obtain a token.
-
-## Run automated backend tests (optional)
-
-From the `backend` directory:
+From `campusflow/backend`:
 
 ```powershell
 python -m pip install -r requirements-dev.txt
-python -m pytest -q tests/test_phase8.py
+python -m pytest -q tests
 ```
 
-The tests use temporary SQLite databases and **do not touch your own `students.db`**.
+The test suite uses temporary database files, not your own `students.db`.
 
-## Security notes
+## Folder structure
 
-- There are **no default passwords or auto-created administrators**.
-- Only run `create_admin.py` on a computer you control.
-- Never commit `students.db` or account tokens to GitHub. `.gitignore` excludes the database.
-- Login tokens are kept in browser `sessionStorage` for this learning project: closing the tab usually ends access on that tab, but any outstanding token expires after up to 8 hours or when revoked. `sessionStorage` can be accessed by JavaScript, so don't consider this production session security.
-- Don't store real student records here unless you have permission and appropriate safeguards.
-- For real deployment, move to audited authentication/session infrastructure, secure HTTP-only cookies with CSRF protection, TLS, monitoring, backup/restore, account recovery, and security testing.
+```text
+campusflow/
+├── backend/
+│   ├── main.py                # Existing CRUD/auth + new API endpoints
+│   ├── reports.py             # Reporting aggregates, CSV/PDF generation
+│   ├── security.py            # Phase 8 authentication and roles
+│   ├── create_admin.py
+│   ├── requirements.txt
+│   ├── requirements-dev.txt
+│   └── tests/
+│       ├── test_phase8.py
+│       └── test_phase9.py
+├── frontend/
+│   ├── src/
+│   │   ├── App.jsx            # Workspace, navigation, marks/attendance forms
+│   │   ├── ReportsPage.jsx    # New Phase 9 reports UI
+│   │   ├── AccountsPage.jsx
+│   │   ├── AuthScreen.jsx
+│   │   ├── api.js
+│   │   └── styles.css
+│   ├── package.json
+│   └── vite.config.js
+├── README.md
+├── PHASE9_CHANGELOG.md
+└── .gitignore
+```
 
-## Next milestone
+## Add Phase 9 to your existing GitHub project
 
-**Phase 9:** Advanced academic reports, filters and export improvements. **Phase 10:** Restricted AI assistant for authorized academic data.
+To keep the existing history in `hamzadevs-arch/student-management-system`, copy the new **`campusflow/` source files** into the `campusflow/` folder of your **cloned original GitHub repository**, replacing the older Phase 8 source files. Do not copy local `students.db`, `.env` files, or `node_modules`. From your clone:
+
+```powershell
+git add campusflow
+git status
+# Confirm no databases, credentials or node_modules are staged.
+git commit -m "Phase 9: Add academic reports, semester analytics and PDF exports"
+git push origin main
+```
+
+Never force-push or initialize a new Git history inside an extracted ZIP.
+
+## Local development and data safety
+
+- `students.db` is excluded by `.gitignore`. Keep backups and never upload it to GitHub.
+- Avoid putting real student information into a publicly hosted demo or screenshot.
+- For local learning/development only; this is not yet an audited production student-information system.
+- PDF exports include private academic information. Keep them in a secure folder and share only with authorized people.
+- Endpoints are documented at http://127.0.0.1:8000/docs while backend is running.
+
+## Next phase
+
+**Phase 10 — AI Academic Assistant**: permission-aware natural-language questions over read-only academic data.

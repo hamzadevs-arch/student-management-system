@@ -13,7 +13,8 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
+from reports import report_analytics, student_report, summary_pdf, student_pdf, summary_csv
 from pydantic import BaseModel, Field, field_validator
 
 from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
@@ -23,7 +24,7 @@ from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
 DB_PATH = Path(os.getenv("STUDENTS_DB", Path(__file__).resolve().parent.parent / "students.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="CampusFlow API", version="2.0.0")
+app = FastAPI(title="CampusFlow API", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -72,6 +73,11 @@ def setup_db():
                 FOREIGN KEY (student_id) REFERENCES students(id)
             );
         """)
+        # Non-destructive migration: Phase 8 records remain "Unassigned".
+        for table in ("marks", "attendance"):
+            columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+            if "semester" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN semester TEXT NOT NULL DEFAULT 'Unassigned'")
         setup_auth_tables(conn)
 
 
@@ -226,6 +232,14 @@ class MarksPayload(BaseModel):
     student_id: int
     subject: str = Field(min_length=1, max_length=120)
     marks: float = Field(ge=0, le=100)
+    semester: str = Field(default="Unassigned", min_length=1, max_length=40)
+
+    @field_validator("semester")
+    @classmethod
+    def validate_semester(cls, value: str):
+        if not value.strip():
+            raise ValueError("Semester cannot be blank")
+        return value.strip()
 
     @field_validator("subject")
     @classmethod
@@ -239,6 +253,14 @@ class AttendancePayload(BaseModel):
     student_id: int
     date: date
     status: Literal["P", "A"]
+    semester: str = Field(default="Unassigned", min_length=1, max_length=40)
+
+    @field_validator("semester")
+    @classmethod
+    def validate_attendance_semester(cls, value: str):
+        if not value.strip():
+            raise ValueError("Semester cannot be blank")
+        return value.strip()
 
 
 def student_or_404(conn, student_id: int):
@@ -318,7 +340,7 @@ def delete_student(student_id: int, admin=Depends(require_admin)):
 def list_marks(user=Depends(current_user)):
     with db() as conn:
         return [dict(row) for row in conn.execute("""
-            SELECT m.id, m.student_id, s.name AS student_name, m.subject, m.marks
+            SELECT m.id, m.student_id, s.name AS student_name, m.subject, m.marks, m.semester
             FROM marks m JOIN students s ON s.id=m.student_id ORDER BY m.id DESC
         """).fetchall()]
 
@@ -327,14 +349,14 @@ def list_marks(user=Depends(current_user)):
 def save_marks(payload: MarksPayload, user=Depends(current_user)):
     with db() as conn:
         student_or_404(conn, payload.student_id)
-        existing = conn.execute("SELECT id FROM marks WHERE student_id=? AND LOWER(subject)=LOWER(?) ORDER BY id LIMIT 1",
-                                (payload.student_id, payload.subject)).fetchone()
+        existing = conn.execute("SELECT id FROM marks WHERE student_id=? AND LOWER(subject)=LOWER(?) AND semester=? ORDER BY id LIMIT 1",
+                                (payload.student_id, payload.subject, payload.semester)).fetchone()
         if existing:
             conn.execute("UPDATE marks SET marks=?,subject=? WHERE id=?",
                          (payload.marks, payload.subject, existing["id"]))
         else:
-            conn.execute("INSERT INTO marks (student_id,subject,marks) VALUES (?,?,?)",
-                         (payload.student_id, payload.subject, payload.marks))
+            conn.execute("INSERT INTO marks (student_id,subject,marks,semester) VALUES (?,?,?,?)",
+                         (payload.student_id, payload.subject, payload.marks, payload.semester))
     return {"message": "Marks saved"}
 
 
@@ -342,7 +364,7 @@ def save_marks(payload: MarksPayload, user=Depends(current_user)):
 def list_attendance(user=Depends(current_user)):
     with db() as conn:
         return [dict(row) for row in conn.execute("""
-            SELECT a.id, a.student_id, s.name AS student_name, s.course, a.date, a.status
+            SELECT a.id, a.student_id, s.name AS student_name, s.course, a.date, a.status, a.semester
             FROM attendance a JOIN students s ON s.id=a.student_id
             ORDER BY a.date DESC, a.id DESC
         """).fetchall()]
@@ -355,10 +377,10 @@ def save_attendance(payload: AttendancePayload, user=Depends(current_user)):
         existing = conn.execute("SELECT id FROM attendance WHERE student_id=? AND date=? ORDER BY id LIMIT 1",
                                 (payload.student_id, payload.date.isoformat())).fetchone()
         if existing:
-            conn.execute("UPDATE attendance SET status=? WHERE id=?", (payload.status, existing["id"]))
+            conn.execute("UPDATE attendance SET status=?,semester=? WHERE id=?", (payload.status, payload.semester, existing["id"]))
         else:
-            conn.execute("INSERT INTO attendance (student_id,date,status) VALUES (?,?,?)",
-                         (payload.student_id, payload.date.isoformat(), payload.status))
+            conn.execute("INSERT INTO attendance (student_id,date,status,semester) VALUES (?,?,?,?)",
+                         (payload.student_id, payload.date.isoformat(), payload.status, payload.semester))
     return {"message": "Attendance saved"}
 
 
@@ -430,6 +452,62 @@ def export_students(admin=Depends(require_admin)):
     writer = csv.writer(output)
     writer.writerow(["ID", "Name", "Age", "Email", "Course"])
     for row in rows:
-        writer.writerow(list(row))
+        # Defend CSV consumers from formula injection in user-supplied text fields.
+        safe = []
+        for value in row:
+            if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+                value = "'" + value
+            safe.append(value)
+        writer.writerow(safe)
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=student-report.csv"})
+
+
+# ------------------- Phase 9: reporting -------------------
+
+def check_report_dates(start_date: date | None, end_date: date | None):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="Attendance start date must be on or before end date")
+
+
+@app.get("/api/reports/analytics")
+def get_reports(course: str = "", semester: str = "", start_date: date | None = None,
+                end_date: date | None = None, user=Depends(current_user)):
+    check_report_dates(start_date, end_date)
+    with db() as conn:
+        return report_analytics(conn, course.strip(), semester.strip(), start_date, end_date)
+
+
+@app.get("/api/reports/summary.pdf")
+def download_summary_pdf(course: str = "", semester: str = "", start_date: date | None = None,
+                         end_date: date | None = None, admin=Depends(require_admin)):
+    check_report_dates(start_date, end_date)
+    with db() as conn:
+        data = report_analytics(conn, course.strip(), semester.strip(), start_date, end_date)
+    return Response(summary_pdf(data), media_type="application/pdf",
+                    headers={"Content-Disposition": "attachment; filename=campusflow-academic-report.pdf",
+                             "Cache-Control": "no-store"})
+
+
+@app.get("/api/reports/summary.csv")
+def download_summary_csv(course: str = "", semester: str = "", start_date: date | None = None,
+                         end_date: date | None = None, admin=Depends(require_admin)):
+    check_report_dates(start_date, end_date)
+    with db() as conn:
+        data = report_analytics(conn, course.strip(), semester.strip(), start_date, end_date)
+    return Response(summary_csv(data), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=campusflow-program-summary.csv",
+                             "Cache-Control": "no-store"})
+
+
+@app.get("/api/reports/student/{student_id}.pdf")
+def download_student_pdf(student_id: int, semester: str = "", start_date: date | None = None,
+                         end_date: date | None = None, admin=Depends(require_admin)):
+    check_report_dates(start_date, end_date)
+    with db() as conn:
+        data = student_report(conn, student_id, semester.strip(), start_date, end_date)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return Response(student_pdf(data, semester.strip(), start_date, end_date), media_type="application/pdf",
+                    headers={"Content-Disposition": f"attachment; filename=campusflow-student-{student_id}.pdf",
+                             "Cache-Control": "no-store"})

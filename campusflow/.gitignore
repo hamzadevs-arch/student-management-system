@@ -1,25 +1,23 @@
+# Private/local student records
+students.db
+*.db-journal
+*.db-wal
+*.db-shm
+students.json
 # Python
 __pycache__/
 *.pyc
 .venv/
-venv/
-
-# React
+# Node
 node_modules/
 dist/
-
-# Databases
-*.db
-*.sqlite
-*.sqlite3
-*.db-journal
-*.db-wal
-*.db-shm
-
-# Secrets
+# Local configuration
 .env
 .env.*
 !.env.example
-
-# Local files
 .DS_Store
+# Phase 9: also protect alternate SQLite and test artifacts
+*.db
+*.sqlite
+*.sqlite3
+.pytest_cache/
