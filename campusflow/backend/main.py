@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from reports import report_analytics, student_report, summary_pdf, student_pdf, summary_csv
 from academic_assistant import PROMPTS, ADMIN_PROMPTS, answer_question, optionally_polish_aggregate
+from ml_predictions import setup_prediction_tables, examples as ml_examples, overview as ml_overview, predict as ml_predict
 from pydantic import BaseModel, Field, field_validator
 
 from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
@@ -25,7 +26,7 @@ from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
 DB_PATH = Path(os.getenv("STUDENTS_DB", Path(__file__).resolve().parent.parent / "students.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="CampusFlow API", version="4.0.0")
+app = FastAPI(title="CampusFlow API", version="5.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -80,6 +81,7 @@ def setup_db():
             if "semester" not in columns:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN semester TEXT NOT NULL DEFAULT 'Unassigned'")
         setup_auth_tables(conn)
+        setup_prediction_tables(conn)
 
 
 setup_db()
@@ -545,4 +547,54 @@ def assistant_ask(payload: AssistantQuestion, user=Depends(current_user)):
     with db() as conn:
         result = answer_question(conn, payload.question, user["role"])
     result = optionally_polish_aggregate(result)
+    return result
+
+
+# ------------------- Phase 11: historic-score ML lab -------------------
+
+class PerformanceExample(BaseModel):
+    student_id: int = Field(gt=0)
+    previous_score: float = Field(ge=0, le=100)
+    attendance_rate: float = Field(ge=0, le=100)
+    next_score: float = Field(ge=0, le=100)
+
+
+class PerformanceScenario(BaseModel):
+    previous_score: float = Field(ge=0, le=100)
+    attendance_rate: float = Field(ge=0, le=100)
+    mode: Literal["demo", "real"] = "demo"
+
+
+@app.get("/api/ml/overview")
+def ml_status(admin=Depends(require_admin)):
+    with db() as conn:
+        return ml_overview(conn)
+
+
+@app.post("/api/ml/examples", status_code=201)
+def create_ml_example(payload: PerformanceExample, admin=Depends(require_admin)):
+    with db() as conn:
+        student_or_404(conn, payload.student_id)
+        row = conn.execute(
+            "INSERT INTO performance_examples(student_id, previous_score, attendance_rate, next_score) VALUES (?,?,?,?)",
+            (payload.student_id, payload.previous_score, payload.attendance_rate, payload.next_score))
+        return {"id": row.lastrowid, "message": "Historical example saved"}
+
+
+@app.delete("/api/ml/examples/{example_id}")
+def delete_ml_example(example_id: int, admin=Depends(require_admin)):
+    with db() as conn:
+        row = conn.execute("DELETE FROM performance_examples WHERE id=?", (example_id,))
+        if row.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Historical example not found")
+    return {"message": "Example removed"}
+
+
+@app.post("/api/ml/predict")
+def predict_performance(payload: PerformanceScenario, admin=Depends(require_admin)):
+    with db() as conn:
+        rows = ml_examples(conn) if payload.mode == "real" else []
+    result = ml_predict(rows, payload.previous_score, payload.attendance_rate, payload.mode)
+    if result is None:
+        raise HTTPException(status_code=409, detail="Not enough varied historical training examples to run a real-data estimate")
     return result

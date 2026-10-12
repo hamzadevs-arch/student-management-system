@@ -98,3 +98,10 @@ api.askAssistant = question => request('/assistant/ask', {
   method: 'POST',
   body: JSON.stringify({ question }),
 });
+
+
+// Phase 11: local machine learning lab; endpoints require administrator access.
+api.mlOverview = () => request('/ml/overview');
+api.mlAddExample = payload => request('/ml/examples',{method:'POST',body:JSON.stringify(payload)});
+api.mlDeleteExample = id => request(`/ml/examples/${id}`,{method:'DELETE'});
+api.mlPredict = payload => request('/ml/predict',{method:'POST',body:JSON.stringify(payload)});

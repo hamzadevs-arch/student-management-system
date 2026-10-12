@@ -6,7 +6,7 @@ import {
   CalendarDays, UsersRound, Target, Clock3, TrendingUp, Ellipsis, X, Check,
   Pencil, Trash2, RefreshCcw, AlertCircle, BookMarked, MoreHorizontal, LogOut,
   CircleHelp, Command, Filter, FileBarChart, Lightbulb, ShieldCheck, CheckCircle2,
-  ArrowDownToLine, MessageCircle, BadgeCheck
+  ArrowDownToLine, MessageCircle, BadgeCheck, BrainCircuit
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip,
@@ -17,6 +17,7 @@ import AuthScreen from './AuthScreen';
 import AccountsPage from './AccountsPage';
 import ReportsPage from './ReportsPage';
 import AssistantPage from './AssistantPage';
+import PredictionPage from './PredictionPage';
 
 const NAV = [
   { key: 'overview', name: 'Overview', icon: LayoutDashboard },
@@ -25,6 +26,7 @@ const NAV = [
   { key: 'grades', name: 'Grades & marks', icon: BookOpen },
   { key: 'reports', name: 'Reports', icon: ChartNoAxesCombined },
   { key: 'assistant', name: 'AI Assistant', icon: Sparkles },
+  { key: 'prediction', name: 'ML Predictions', icon: BrainCircuit, adminOnly: true },
 ];
 const COLORS = ['#705cf2', '#3fc7b2', '#f5b95c', '#78a6fa', '#ed92a1', '#aa98ff', '#84c1d9', '#9cabba'];
 const initials = name => (name || '?').split(/\s+/).slice(0, 2).map(s => s[0] || '').join('').toUpperCase();
@@ -54,7 +56,7 @@ function Sidebar({ page, setPage, collapsed, setCollapsed, mobileOpen, setMobile
       <div className="sidebar-scroll">
         {!collapsed && <p className="side-caption">WORKSPACE</p>}
         <nav aria-label="Main navigation" className="side-nav">
-          {NAV.map(({ key, name, icon: Icon }) => <button key={key} title={name} onClick={() => { setPage(key); setMobileOpen(false); }} className={cx('nav-item', page === key && 'nav-active')}>
+          {NAV.filter(item => !item.adminOnly || user.role === 'admin').map(({ key, name, icon: Icon }) => <button key={key} title={name} onClick={() => { setPage(key); setMobileOpen(false); }} className={cx('nav-item', page === key && 'nav-active')}>
             <Icon size={19}/>{!collapsed && <><span>{name}</span>{page === key && <span className="active-dot"/>}</>}
           </button>)}
         </nav>
@@ -71,7 +73,7 @@ function Sidebar({ page, setPage, collapsed, setCollapsed, mobileOpen, setMobile
 }
 
 function Header({ page, setPage, setMobileOpen, refresh, busy, notify, user, onLogout }) {
-  const titles = { overview: 'Dashboard', students: 'Students', attendance: 'Attendance', grades: 'Grades & marks', reports: 'Reports', assistant: 'AI Assistant', accounts: 'Team access' };
+  const titles = { overview: 'Dashboard', students: 'Students', attendance: 'Attendance', grades: 'Grades & marks', reports: 'Reports', assistant: 'AI Assistant', prediction: 'ML Predictions', accounts: 'Team access' };
   return <header className="topbar">
     <div className="breadcrumb"><button className="mobile-menu icon-action" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu size={21}/></button><span className="crumb-muted">Workspace</span><ChevronRight size={15}/><span>{titles[page]}</span></div>
     <div className="top-actions">
@@ -280,6 +282,7 @@ function Workspace({ user, onLogout }) {
           {page === 'accounts' && canManage && <AccountsPage/>}
           {page === 'reports' && <ReportsPage user={user} students={students} refreshKey={dashboard} notify={notify} onDownloadStudents={downloadCSV}/>}
           {page === 'assistant' && <AssistantPage user={user}/>}
+          {page === 'prediction' && canManage && <PredictionPage students={students}/>}
         </>}
         <footer className="page-footer"><span>© {new Date().getFullYear()} CampusFlow • Built with React & FastAPI</span><span><span className="online-dot"/> Protected academic workspace</span></footer>
       </main>
@@ -288,7 +291,7 @@ function Workspace({ user, onLogout }) {
     {canManage && modal?.kind==='student' && <Modal title={modal.value?'Edit student':'Add new student'} subtitle="Keep your student directory up to date." onClose={()=>setModal(null)}><StudentForm value={modal.value} onSave={saveStudent} onClose={()=>setModal(null)} saving={saving}/></Modal>}
     {modal?.kind==='marks' && <Modal title="Record student marks" subtitle="Add or update a subject result." onClose={()=>setModal(null)}><MarksForm students={students} onSave={saveMarks} onClose={()=>setModal(null)} saving={saving}/></Modal>}
     {modal?.kind==='attendance' && <Modal title="Record attendance" subtitle="Save a present or absent entry for one day." onClose={()=>setModal(null)}><AttendanceForm students={students} onSave={saveAttendance} onClose={()=>setModal(null)} saving={saving}/></Modal>}
-    {modal?.kind==='future' && <Modal title="Coming in the next phases" subtitle="We’re building the core experience first." onClose={()=>setModal(null)}><div className="roadmap-modal"><div><ShieldCheck size={22}/><span><b>Phase 8 — Secure accounts</b><small>Admin and teacher roles are now active.</small></span></div><div><Sparkles size={22}/><span><b>Phase 10 — Academic assistant</b><small>Now available in the sidebar</small></span></div><div><ChartNoAxesCombined size={22}/><span><b>Phase 11 — Smart analytics</b><small>Better progress and reporting tools</small></span></div><button className="primary-btn" onClick={()=>setModal(null)}>Got it</button></div></Modal>}
+    {modal?.kind==='future' && <Modal title="Coming in the next phases" subtitle="We’re building the core experience first." onClose={()=>setModal(null)}><div className="roadmap-modal"><div><ShieldCheck size={22}/><span><b>Phase 8 — Secure accounts</b><small>Admin and teacher roles are now active.</small></span></div><div><Sparkles size={22}/><span><b>Phase 10 — Academic assistant</b><small>Now available in the sidebar</small></span></div><div><ChartNoAxesCombined size={22}/><span><b>Phase 11 — ML predictions</b><small>Local model with clearly marked demo mode and historical-outcome training</small></span></div><button className="primary-btn" onClick={()=>setModal(null)}>Got it</button></div></Modal>}
   </div>;
 }
 

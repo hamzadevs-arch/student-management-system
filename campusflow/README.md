@@ -1,3 +1,124 @@
+# CampusFlow — Phase 11: Machine Learning Performance Prediction
+
+**Full-stack academic management application:** React + Vite + Tailwind CSS + Recharts + FastAPI + SQLite + ReportLab + scikit-learn.
+
+Phase 11 adds an **administrator-only ML Predictions page** to the Phase 10 application. Everything from Phases 8–10 is preserved: authentication, teacher accounts, student CRUD, marks, attendance, advanced reports, PDF and CSV downloads, and the academic assistant with the student name-search fix.
+
+## What Phase 11 actually predicts
+
+The model estimates **the next assessment score (0–100)** from two inputs:
+
+- A **previous assessment score**, and
+- **Attendance percentage before the next assessment**.
+
+Real model training requires paired *historical* examples where all three values are known: previous score, attendance during the interval, and **actual later score**. These pairs are added manually on the ML Predictions page and saved in a new `performance_examples` table in the existing `students.db` file. The model does **not** pretend the current `marks` table contains prior→subsequent exam pairs; it does not.
+
+With fewer than **12 labeled examples from at least 4 different students**, the real-data model is deliberately unavailable. Even when enabled, its output is only a limited educational estimate, not a final grade or any basis for high-stakes decisions. Only two inputs are modeled, and small samples can generalize poorly.
+
+To try Phase 11 immediately, choose **Synthetic demo**. It creates 84 reproducible **fictional** training cases in memory only. Demo estimates are explicitly marked *not predictions about a real student*. The demo never adds, changes, or deletes your real student records.
+
+The algorithm is scikit-learn **Ridge regression** with standardized inputs. An evaluation holdout is grouped by student ID so a student's repeated examples are not split across both training and test sets. Model evaluation shows mean absolute error (MAE) alongside a simple baseline (assume next score equals previous score). It then trains on all examples for the scenario estimate. No saved model file and no external API or key are required. The model re-fits locally on request.
+
+## Upgrade your existing Phase 10 database (IMPORTANT)
+
+1. Stop both Phase 10 terminals (FastAPI and Vite) using Ctrl+C.
+2. Find your existing Phase 10 `students.db`, usually:
+   `C:\Users\dell\Downloads\CampusFlow_Phase10_Academic_AI_Assistant\campusflow\students.db`.
+   (If you set `STUDENTS_DB`, use the location named by that variable.)
+3. **Copy**, don't move or delete, the old database into the new extracted **Phase 11 `campusflow` folder**, next to `backend` and `frontend`. Keep a separate backup of the old `.db` before launching Phase 11.
+4. Don't run `create_admin.py` again. The original admin login and teacher accounts remain in the copied SQLite database.
+5. At backend startup, the new historical-example table is created using `CREATE TABLE IF NOT EXISTS`. The existing tables are not replaced. Avoid swapping the upgraded Phase 11 DB back into older running versions.
+
+### Project layout after extracting the ZIP
+
+```text
+CampusFlow_Phase11_Performance_Prediction/
+└── campusflow/
+    ├── backend/
+    │   ├── main.py
+    │   ├── ml_predictions.py           # Phase 11 ML routines
+    │   ├── academic_assistant.py
+    │   ├── reports.py
+    │   ├── tests/test_phase11.py
+    │   └── requirements.txt
+    ├── frontend/
+    │   ├── package.json
+    │   └── src/
+    │       ├── App.jsx
+    │       └── PredictionPage.jsx       # Phase 11 React ML screen
+    ├── students.db                      # Copy your own local Phase 10 DB here
+    ├── PHASE11_CHANGELOG.md
+    └── README.md
+```
+
+### Start the Phase 11 backend in VS Code (Terminal 1)
+
+Use the location where you extracted the ZIP. For the normal Windows Downloads path:
+
+```powershell
+cd "$env:USERPROFILE\Downloads\CampusFlow_Phase11_Performance_Prediction\campusflow\backend"
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+`requirements.txt` now includes **scikit-learn** (and its required numeric dependencies). The terminal should show the backend at http://127.0.0.1:8000. Keep it running.
+
+### Start React (Terminal 2)
+
+```powershell
+cd "$env:USERPROFILE\Downloads\CampusFlow_Phase11_Performance_Prediction\campusflow\frontend"
+npm install
+npm run dev
+```
+
+Open **http://localhost:5173**. Sign in as your *existing administrator*. Click **ML Predictions** in the sidebar.
+
+If `cd frontend` fails, you're in the wrong parent folder: find the folder containing `package.json` and execute `npm install` there. Do not install frontend packages in the ZIP's outer directory.
+
+## Quick test in the browser
+
+1. **ML Predictions → Synthetic demo:** type 76 (previous score) and 88 (attendance). Press **Generate estimate**. You should see a numerical estimate with a prominent **fictional-data disclaimer**.
+2. **Real records:** initially locked if you don't have at least 12 historical examples from at least 4 students.
+3. **Historical outcomes:** after a later exam has actually happened, record the student, their *earlier* score, attendance during the period, and the *actual later* score. Do not enter made-up values as real history.
+4. After enough real examples, switch to **Real records** and test an estimate. The model is fitted from those saved examples, and MAE helps you understand its limitations.
+5. Teacher users cannot access the Phase 11 API, even by pasting the endpoint URL manually.
+
+## ML API endpoints (all admin-only)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/ml/overview` | Training readiness, evaluation, and historical examples |
+| POST | `/api/ml/examples` | Store a genuine historical labeled example |
+| DELETE | `/api/ml/examples/{id}` | Delete a historical example |
+| POST | `/api/ml/predict` | Run demo or trained real-data estimate |
+
+Example prediction request (after login):
+
+```json
+{"mode":"demo", "previous_score":76, "attendance_rate":88}
+```
+
+Authentication uses the existing Phase 8 bearer token; no new password is required. Input scores are validated as between 0 and 100. Student IDs must exist in the local database. Admin-only permissions are checked on the backend.
+
+## Run tests
+
+In the backend terminal (install test dependencies if necessary):
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q tests
+```
+
+19 backend tests passed while preparing this release. Existing Phase 8–10 tests remain part of the suite. The JSX source files were also checked with TypeScript's JSX parser; a complete frontend production build is **not** claimed here.
+
+## GitHub and personal data
+
+Commit `backend/ml_predictions.py`, `frontend/src/PredictionPage.jsx`, and the other updated source files. **Never push `students.db`, `.env`, API keys, generated dependency folders, or student credentials to a public repository.** `.gitignore` excludes the common local files, but always check `git diff --cached --name-only` before a commit. The application remains local to your computer unless you deliberately deploy it.
+
+---
+
+## Earlier phases
+
 # CampusFlow — Phase 10: AI-Enhanced Academic Assistant + Phase 9 Reports
 
 **Full-stack Student Management System:** React 19 + Vite + Tailwind CSS + Recharts + FastAPI + SQLite + ReportLab

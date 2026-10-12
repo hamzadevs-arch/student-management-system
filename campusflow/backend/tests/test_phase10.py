@@ -99,3 +99,34 @@ def test_llm_never_called_with_student_records(project, monkeypatch):
     assert optionally_polish_aggregate(individual)['mode'] == 'local'
     restricted = {'kind':'restricted','answer':'Access denied', 'metrics':[], 'rows':[], 'note':'', 'mode':'local'}
     assert optionally_polish_aggregate(restricted)['mode'] == 'local'
+
+
+def test_student_name_search_is_not_interpreted_as_student_count(project):
+    client, main, admin, teacher = project
+    found = ask(client, admin, 'Is there any student named Ali?')
+    assert found.status_code == 200
+    assert found.json()['kind'] == 'individual'
+    assert 'Ali is registered' in found.json()['answer']
+    assert '2 enrolled' not in found.json()['answer']
+
+    missing = ask(client, admin, 'Is there any student named Hamza?')
+    assert missing.json()['kind'] == 'individual'
+    assert 'No student named Hamza was found' in missing.json()['answer']
+    assert ask(client, admin, 'Find student Sara').json()['rows'][0]['label'] == 'Sara'
+    assert ask(client, admin, 'Is Ali a student?').json()['rows'][0]['label'] == 'Ali'
+    assert ask(client, teacher, 'Is there any student named Ali?').json()['kind'] == 'restricted'
+    assert ask(client, teacher, 'How many students are enrolled?').json()['kind'] == 'aggregate'
+
+
+def test_student_name_search_matches_first_or_last_names(project):
+    client, main, admin, teacher = project
+    with main.db() as conn:
+        conn.execute('INSERT INTO students (name, age, email, course) VALUES (?, ?, ?, ?)',
+                     ('Hamza Tariq', 21, 'hamza@example.com', 'Computer Science'))
+        conn.execute('INSERT INTO students (name, age, email, course) VALUES (?, ?, ?, ?)',
+                     ('Ahmed Hamza', 22, 'ahmed@example.com', 'Software Engineering'))
+    result = ask(client, admin, 'Is there any student named hamza?').json()
+    assert result['kind'] == 'individual'
+    assert '2 students' in result['answer']
+    assert {row['label'] for row in result['rows']} == {'Hamza Tariq', 'Ahmed Hamza'}
+    assert ask(client, admin, 'Is there any student named ham?').json()['rows'] == []
