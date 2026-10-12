@@ -10,12 +10,16 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from reports import report_analytics, student_report, summary_pdf, student_pdf, summary_csv
 from academic_assistant import PROMPTS, ADMIN_PROMPTS, answer_question, optionally_polish_aggregate
+from phase13 import (setup_phase13_tables, CalendarEvent, BrandingUpdate,
+                     public_branding, branding_for_pdf, sanitized_logo,
+                     parse_import_file, preview_import, MAX_FILE_BYTES)
+from smart_assistant import ask as smart_ask, provider_status, PROMPT_EXAMPLES, ADMIN_EXAMPLES
 from ml_predictions import setup_prediction_tables, examples as ml_examples, overview as ml_overview, predict as ml_predict
 from pydantic import BaseModel, Field, field_validator
 
@@ -26,7 +30,7 @@ from security import (LOCK_SECONDS, MAX_FAILED_LOGINS, SESSION_TTL_SECONDS,
 DB_PATH = Path(os.getenv("STUDENTS_DB", Path(__file__).resolve().parent.parent / "students.db"))
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="CampusFlow API", version="5.0.0")
+app = FastAPI(title="CampusFlow API", version="13.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -82,6 +86,7 @@ def setup_db():
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN semester TEXT NOT NULL DEFAULT 'Unassigned'")
         setup_auth_tables(conn)
         setup_prediction_tables(conn)
+        setup_phase13_tables(conn)
 
 
 setup_db()
@@ -122,6 +127,12 @@ def require_admin(user=Depends(current_user)):
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Administrator access required")
     return user
+
+
+@app.get("/api/version")
+def app_version():
+    """Public, non-sensitive release check to diagnose stale backend servers."""
+    return {"project": "CampusFlow", "phase": 13, "edition": "Offline Smart Campus"}
 
 
 @app.get("/api/auth/setup-status")
@@ -487,7 +498,9 @@ def download_summary_pdf(course: str = "", semester: str = "", start_date: date 
     check_report_dates(start_date, end_date)
     with db() as conn:
         data = report_analytics(conn, course.strip(), semester.strip(), start_date, end_date)
-    return Response(summary_pdf(data), media_type="application/pdf",
+    with db() as conn:
+        brand = branding_for_pdf(conn)
+    return Response(summary_pdf(data, brand), media_type="application/pdf",
                     headers={"Content-Disposition": "attachment; filename=campusflow-academic-report.pdf",
                              "Cache-Control": "no-store"})
 
@@ -511,7 +524,9 @@ def download_student_pdf(student_id: int, semester: str = "", start_date: date |
         data = student_report(conn, student_id, semester.strip(), start_date, end_date)
     if data is None:
         raise HTTPException(status_code=404, detail="Student not found")
-    return Response(student_pdf(data, semester.strip(), start_date, end_date), media_type="application/pdf",
+    with db() as conn:
+        brand = branding_for_pdf(conn)
+    return Response(student_pdf(data, semester.strip(), start_date, end_date, brand), media_type="application/pdf",
                     headers={"Content-Disposition": f"attachment; filename=campusflow-student-{student_id}.pdf",
                              "Cache-Control": "no-store"})
 
@@ -532,22 +547,26 @@ class AssistantQuestion(BaseModel):
 
 @app.get("/api/assistant/capabilities")
 def assistant_capabilities(user=Depends(current_user)):
+    status = provider_status()
     return {
-        "mode": "llm_available" if os.getenv("OPENAI_API_KEY") else "local",
-        "privacy": "Only aggregated numeric academic summaries can be polished by the optional LLM; student-specific results never leave your server.",
-        "prompts": PROMPTS + (ADMIN_PROMPTS if user["role"] == "admin" else []),
-        "role": user["role"],
+        # Keep previous clients working; expose enhanced provider status separately.
+        "mode": "llm_available" if status['available'] and status['provider'] != 'rules' else "local",
+        "engine": status,
+        "privacy": "Assistant queries current SQLite records locally using approved, read-only operations. No external AI is required.",
+        "prompts": PROMPT_EXAMPLES + (ADMIN_EXAMPLES if user['role'] == 'admin' else []),
+        "role": user['role'],
     }
 
 
+class SmartQuestion(AssistantQuestion):
+    context_student_id: int | None = Field(default=None, ge=1)
+
+
 @app.post("/api/assistant/ask")
-def assistant_ask(payload: AssistantQuestion, user=Depends(current_user)):
-    # Only the vetted query templates in academic_assistant.py may read SQLite.
-    # The chat never writes to the database or executes user-provided SQL.
+def assistant_ask(payload: SmartQuestion, user=Depends(current_user)):
+    # Selected tools are SELECT-only; model text never becomes executable SQL.
     with db() as conn:
-        result = answer_question(conn, payload.question, user["role"])
-    result = optionally_polish_aggregate(result)
-    return result
+        return smart_ask(conn, payload.question, user['role'], payload.context_student_id)
 
 
 # ------------------- Phase 11: historic-score ML lab -------------------
@@ -598,3 +617,118 @@ def predict_performance(payload: PerformanceScenario, admin=Depends(require_admi
     if result is None:
         raise HTTPException(status_code=409, detail="Not enough varied historical training examples to run a real-data estimate")
     return result
+
+
+# ------------------- Phase 13: import, calendar and branding -------------------
+
+async def _uploaded_student_file(file: UploadFile):
+    raw = await file.read(MAX_FILE_BYTES + 1)
+    return parse_import_file(file.filename or '', raw, StudentPayload)
+
+
+@app.post('/api/import/students/preview')
+async def preview_students_file(file: UploadFile = File(...), admin=Depends(require_admin)):
+    parsed = await _uploaded_student_file(file)
+    with db() as conn:
+        preview = preview_import(conn, parsed)
+    preview.pop('ready_rows', None)
+    return preview
+
+
+@app.post('/api/import/students/commit')
+async def import_students_file(file: UploadFile = File(...), admin=Depends(require_admin)):
+    parsed = await _uploaded_student_file(file)
+    if parsed['errors']:
+        raise HTTPException(422, 'Fix invalid rows before importing. No data was changed.')
+    with db() as conn:
+        preview = preview_import(conn, parsed)
+        # INSERT OR IGNORE intentionally does NOT update existing student identities.
+        # All insertions occur in one transaction.
+        added = 0
+        for record in preview['ready_rows']:
+            cur = conn.execute('INSERT OR IGNORE INTO students(id,name,age,email,course) VALUES (?,?,?,?,?)',
+                 (record['id'],record['name'],record['age'],record['email'],record['course']))
+            added += cur.rowcount
+        return {'imported': added, 'skipped_existing': parsed['total'] - added, 'total_rows': parsed['total']}
+
+
+@app.get('/api/calendar')
+def calendar_events(start_date: date | None = None, end_date: date | None = None,
+                    user=Depends(current_user)):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(422, 'Start date must come before end date')
+    with db() as conn:
+        return [dict(r) for r in conn.execute('''
+            SELECT id,title,event_date,event_type,description,course,semester FROM calendar_events
+            WHERE (? IS NULL OR event_date >= ?) AND (? IS NULL OR event_date <= ?)
+            ORDER BY event_date, id LIMIT 1000''',
+            (str(start_date) if start_date else None, str(start_date) if start_date else None,
+             str(end_date) if end_date else None, str(end_date) if end_date else None)).fetchall()]
+
+
+@app.post('/api/calendar', status_code=201)
+def add_calendar_event(payload: CalendarEvent, admin=Depends(require_admin)):
+    with db() as conn:
+        c = conn.execute('''INSERT INTO calendar_events(title,event_date,event_type,description,course,semester,created_by)
+            VALUES (?,?,?,?,?,?,?)''',(payload.title,payload.event_date.isoformat(),payload.event_type,
+            payload.description,payload.course,payload.semester,admin['id']))
+        return {'id': c.lastrowid, 'message': 'Calendar event created'}
+
+
+@app.put('/api/calendar/{event_id}')
+def edit_calendar_event(event_id: int, payload: CalendarEvent, admin=Depends(require_admin)):
+    with db() as conn:
+        result = conn.execute('''UPDATE calendar_events SET title=?,event_date=?,event_type=?,description=?,course=?,semester=?
+            WHERE id=?''',(payload.title,payload.event_date.isoformat(),payload.event_type,payload.description,
+            payload.course,payload.semester,event_id))
+        if result.rowcount != 1:
+            raise HTTPException(404, 'Event not found')
+    return {'message': 'Calendar event updated'}
+
+
+@app.delete('/api/calendar/{event_id}')
+def remove_calendar_event(event_id: int, admin=Depends(require_admin)):
+    with db() as conn:
+        result = conn.execute('DELETE FROM calendar_events WHERE id=?',(event_id,))
+        if result.rowcount != 1:
+            raise HTTPException(404, 'Event not found')
+    return {'message': 'Event deleted'}
+
+
+@app.get('/api/branding')
+def get_branding(user=Depends(current_user)):
+    with db() as conn:
+        return public_branding(conn)
+
+
+@app.put('/api/branding')
+def update_branding(payload: BrandingUpdate, admin=Depends(require_admin)):
+    with db() as conn:
+        conn.execute('''UPDATE report_branding SET institution_name=?,department=?,contact=?,footer=? WHERE id=1''',
+          (payload.institution_name, payload.department, payload.contact, payload.footer))
+        return public_branding(conn)
+
+
+@app.get('/api/branding/logo')
+def get_branding_logo(user=Depends(current_user)):
+    with db() as conn:
+        logo = conn.execute('SELECT logo_png FROM report_branding WHERE id=1').fetchone()[0]
+    if not logo:
+        raise HTTPException(404, 'No university logo uploaded')
+    return Response(content=logo, media_type='image/png', headers={'Cache-Control':'no-store'})
+
+
+@app.post('/api/branding/logo')
+async def upload_branding_logo(file: UploadFile = File(...), admin=Depends(require_admin)):
+    raw = await file.read(1_500_001)
+    png = sanitized_logo(raw)
+    with db() as conn:
+        conn.execute('UPDATE report_branding SET logo_png=? WHERE id=1',(png,))
+    return {'message': 'Logo updated', 'bytes': len(png)}
+
+
+@app.delete('/api/branding/logo')
+def delete_branding_logo(admin=Depends(require_admin)):
+    with db() as conn:
+        conn.execute('UPDATE report_branding SET logo_png=NULL WHERE id=1')
+    return {'message': 'Logo removed'}

@@ -1,4 +1,15 @@
 students.db
 students.json
 __pycache__/
-*.pyc
+*.pyc**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite3
+**/*.csv
+**/*.xlsx
+**/.env
+**/.env.*
+**/node_modules/
+**/__pycache__/
+**/.venv/
+**/dist/

@@ -16,7 +16,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import (KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle)
+from reportlab.platypus import (KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, Image as RLImage)
 
 BRAND = colors.HexColor('#6656D9')
 PALE = colors.HexColor('#F5F3FF')
@@ -187,6 +187,9 @@ def _styles():
     base.add(ParagraphStyle(name='CFCell', parent=base['Normal'], fontName='Helvetica',
                             fontSize=8, leading=11, textColor=DARK, wordWrap='CJK'))
     base.add(ParagraphStyle(name='CFCellHead', parent=base['CFCell'], fontName='Helvetica-Bold', textColor=colors.white))
+    base.add(ParagraphStyle(name='CFInstitution', parent=base['Normal'], fontName='Helvetica-Bold',
+                            fontSize=15, leading=19, textColor=BRAND))
+    base.add(ParagraphStyle(name='CFDept', parent=base['Normal'], fontSize=8, leading=12, textColor=MUTED))
     base.add(ParagraphStyle(name='CFSmall', parent=base['Normal'], fontSize=8, leading=12, textColor=MUTED))
     return base
 
@@ -208,7 +211,30 @@ def _table(headers, rows, widths, styles):
     return table
 
 
-def _pdf(story):
+def _brand_header(brand, styles):
+    """Logo and university name carried by student's existing SQLite DB."""
+    if not brand:
+        return []
+    name = _safe(brand.get('institution_name') or 'CampusFlow')
+    department = _safe(brand.get('department') or 'Academic Records')
+    contact = _safe(brand.get('contact') or '')
+    text = [Paragraph(name, styles['CFInstitution']),
+            Paragraph(department, styles['CFDept'])]
+    if contact:
+        text.append(Paragraph(contact, styles['CFDept']))
+    if brand.get('logo_png'):
+        try:
+            logo = RLImage(io.BytesIO(brand['logo_png']), width=19*mm, height=19*mm, kind='proportional')
+            header = Table([[logo, text]], colWidths=[26*mm, 146*mm], hAlign='LEFT')
+            header.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                ('BOTTOMPADDING',(0,0),(-1,-1),10)]))
+            return [header, Spacer(1,6)]
+        except (OSError, ValueError):
+            pass
+    return [*text, Spacer(1,14)]
+
+
+def _pdf(story, brand=None):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=19*mm, leftMargin=19*mm,
                             topMargin=20*mm,bottomMargin=18*mm, title='CampusFlow Academic Report',
@@ -219,15 +245,17 @@ def _pdf(story):
         canvas.line(19*mm, 15*mm, A4[0]-19*mm,15*mm)
         canvas.setFont('Helvetica',8)
         canvas.setFillColor(MUTED)
-        canvas.drawString(19*mm, 11*mm,'CAMPUSFLOW  •  PRIVATE ACADEMIC REPORT')
+        footer = (brand or {}).get('footer') or 'CAMPUSFLOW | PRIVATE ACADEMIC REPORT'
+        footer = footer.encode('latin-1', 'replace').decode('latin-1')[:68]
+        canvas.drawString(19*mm, 11*mm, footer)
         canvas.drawRightString(A4[0]-19*mm, 11*mm, f'Page {doc.page}')
     doc.build(story, onFirstPage=decorate, onLaterPages=decorate)
     return buffer.getvalue()
 
 
-def summary_pdf(data):
+def summary_pdf(data, brand=None):
     styles=_styles()
-    story=[Paragraph('Academic performance report',styles['CFTitle']),
+    story=[*_brand_header(brand,styles),Paragraph('Academic performance report',styles['CFTitle']),
            Paragraph(f'Generated {date.today().isoformat()}  |  Course: {_safe(data["filters"]["course"] or "All")}'
                      f'  |  Semester: {_safe(data["filters"]["semester"] or "All")}',styles['CFSubtitle'])]
     f=data['filters']
@@ -251,13 +279,13 @@ def summary_pdf(data):
         [78*mm,48*mm,46*mm],styles))
     story.append(Spacer(1,10))
     story.append(Paragraph('A missing average means no valid marks were recorded. Attendance date filters do not affect marks because legacy marks have no assessment date.',styles['CFSmall']))
-    return _pdf(story)
+    return _pdf(story, brand)
 
 
-def student_pdf(data, semester='', start_date=None, end_date=None):
+def student_pdf(data, semester='', start_date=None, end_date=None, brand=None):
     styles=_styles()
     s=data['student']
-    story=[Paragraph('Student academic report',styles['CFTitle']),
+    story=[*_brand_header(brand,styles),Paragraph('Student academic report',styles['CFTitle']),
            Paragraph('Generated '+date.today().isoformat()+'  |  CampusFlow student report',styles['CFSubtitle']),
            Paragraph('Student profile',styles['CFHeading'])]
     story.append(_table(['Student ID','Name','Program'],[[s['id'],s['name'],s['course']]],
@@ -279,7 +307,7 @@ def student_pdf(data, semester='', start_date=None, end_date=None):
       [50*mm,62*mm,60*mm],styles))
     story.append(Spacer(1,10))
     story.append(Paragraph('Attendance filters are based on session dates; assessment dates are not available for legacy records.',styles['CFSmall']))
-    return _pdf(story)
+    return _pdf(story, brand)
 
 
 def summary_csv(data):

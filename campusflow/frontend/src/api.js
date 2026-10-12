@@ -94,9 +94,9 @@ api.downloadReport = async (kind, filters, studentId='') => {
 
 // Phase 10: authenticated, read-only academic assistant.
 api.assistantCapabilities = () => request('/assistant/capabilities');
-api.askAssistant = question => request('/assistant/ask', {
+api.askAssistant = (question,context_student_id=null) => request('/assistant/ask', {
   method: 'POST',
-  body: JSON.stringify({ question }),
+  body: JSON.stringify({ question, context_student_id }),
 });
 
 
@@ -105,3 +105,31 @@ api.mlOverview = () => request('/ml/overview');
 api.mlAddExample = payload => request('/ml/examples',{method:'POST',body:JSON.stringify(payload)});
 api.mlDeleteExample = id => request(`/ml/examples/${id}`,{method:'DELETE'});
 api.mlPredict = payload => request('/ml/predict',{method:'POST',body:JSON.stringify(payload)});
+
+// Phase 13: authenticated multipart uploads and calendar/branding endpoints.
+async function uploadForm(path, file) {
+  const token = window.sessionStorage.getItem(SESSION_KEY);
+  const payload = new FormData(); payload.append('file',file);
+  let response;
+  try {response = await fetch(`/api${path}`,{method:'POST',headers:token?{Authorization:`Bearer ${token}`}:{},body:payload});}
+  catch {throw new Error('Cannot connect to the CampusFlow backend.');}
+  if (response.status===401){clearSession();window.dispatchEvent(new Event('campusflow-session-expired'));}
+  if (!response.ok){let msg=`Upload failed (${response.status})`;try{const data=await response.json();if(typeof data.detail==='string')msg=data.detail;}catch{}throw new Error(msg);}
+  return response.json();
+}
+api.previewImport=file=>uploadForm('/import/students/preview',file);
+api.commitImport=file=>uploadForm('/import/students/commit',file);
+api.calendarEvents=(filters={})=>request(`/calendar?${new URLSearchParams(filters)}`);
+api.createCalendarEvent=body=>request('/calendar',{method:'POST',body:JSON.stringify(body)});
+api.updateCalendarEvent=(id,body)=>request(`/calendar/${id}`,{method:'PUT',body:JSON.stringify(body)});
+api.deleteCalendarEvent=id=>request(`/calendar/${id}`,{method:'DELETE'});
+api.branding=()=>request('/branding');
+api.updateBranding=body=>request('/branding',{method:'PUT',body:JSON.stringify(body)});
+api.uploadLogo=file=>uploadForm('/branding/logo',file);
+api.removeLogo=()=>request('/branding/logo',{method:'DELETE'});
+api.downloadLogo=async()=>{
+  const token=window.sessionStorage.getItem(SESSION_KEY);
+  const response=await fetch('/api/branding/logo',{headers:token?{Authorization:`Bearer ${token}`}:{}});
+  if(!response.ok)throw new Error('Unable to load university logo');
+  return response.blob();
+};

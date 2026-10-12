@@ -1,3 +1,156 @@
+# CampusFlow — Phase 13 (offline edition, corrected release)
+
+**No Ollama, AI installation, API key, or paid API required.** This version provides a database-powered academic assistant with deterministic language patterns and live answers. It is **not a trained or generative AI language model**.
+
+## What is genuinely new over Phase 12?
+
+| Feature | Where to find it | Permissions |
+|---|---|---|
+| Student Import | Dashboard → New Phase 13 toolkit → Import students, or sidebar | Admin only |
+| Academic Calendar | Dashboard toolkit or sidebar | All staff can view; admin edits |
+| University Branding | Dashboard toolkit or sidebar | Admin only |
+| Live Database Assistant | Dashboard toolkit → Live data assistant | All staff; student-specific info restricted to admin |
+| Branded PDF report | Reports → Summary PDF after configuring branding | Admin only |
+
+These features are real backend endpoints and React pages, **not mockups**. Existing Phase 8–12 functionality is retained. Dashboard displays a visible **NEW · PHASE 13** toolkit. The sidebar has a **PHASE 13 · SMART CAMPUS** label.
+
+## IMPORTANT: Fix the "same as Phase 12" problem
+
+1. Stop your old **Phase 12** backend and frontend terminals (Ctrl+C in each).
+2. Back up `students.db` from the Phase 12 **campusflow root** (beside its `backend` and `frontend`). Keep an extra untouched copy. If you configured `STUDENTS_DB`, back up that configured file instead.
+3. Extract this ZIP to Downloads. **Open the new extracted `campusflow` folder**, not your previous Phase 12 project.
+4. Copy your backup `students.db` into this new `campusflow` root (beside its `backend` and `frontend`). Do not run create_admin.py.
+5. In VS Code select **File → Open Folder** and select this new `campusflow` folder.
+6. Open Terminal 1:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+7. Open Terminal 2 **from campusflow**:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+8. Open http://127.0.0.1:5173 and sign in as **administrator**. Do a hard refresh (Ctrl+Shift+R).
+9. To confirm that the actual Phase 13 **backend** is running, go to:
+
+   http://127.0.0.1:8000/api/version
+
+   It MUST display `"phase": 13` and `"edition": "Offline Smart Campus"`. A 404 or different value means the old backend is running. The frontend now uses Vite `--strictPort`, so it won't silently switch to port 5174 if your old app is still running.
+
+**If you sign in as a teacher, Import Students and University Branding will be hidden because they are admin-only.** Academic Calendar and the Live Assistant are visible to teachers.
+
+### What the offline assistant can do
+
+- Search students by name (admin only); ask a follow-up like "What are his marks?" (uses last uniquely found student).
+- Count students; summarize live recorded marks and attendance.
+- Answer common questions about subject averages, programs, semesters, rankings and attendance alerts.
+- List upcoming events you enter into the calendar.
+- Read authorized SQLite records on each request, so changes appear immediately.
+
+The assistant cannot understand unrestricted language like a trained language model; try the suggested prompts for unsupported questions. It cannot execute arbitrary SQL or modify records.
+
+## Bulk import details
+
+- Use the example in `examples/student_import_template.csv`, or click **Download template** on the Import students page.
+- Columns must be exactly `id,name,age,email,course` (any order is supported). The email field can be blank; its column heading is required.
+- Preview does **not** write to the database. The final import refuses any invalid rows; it only inserts new student IDs. If an ID already exists, the original student's details are **preserved**.
+- Excel formulas are not accepted as student fields. If your spreadsheet contains formula-generated values, paste them as *values* before importing.
+
+## Academic calendar and branded PDF reports
+
+- All signed-in staff can read the calendar; administrators can create, edit and delete events.
+- Use **University branding** to set your institution name and upload an optional PNG/JPEG logo (up to 1.5 MB, max 2048×2048). It is kept inside `students.db` so backing up the DB preserves the logo.
+- Choose **Reports** to export an academic PDF; the logo and academic office details appear in the PDF header, with your chosen footer on each page. Student-specific and summary report export remains **admin-only**.
+
+## Testing
+
+From `campusflow/backend`:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+From `campusflow/frontend` (after `npm install`):
+
+```powershell
+npm run build
+```
+
+**Verification:** 25 backend tests pass (Phases 8–13); React/JSX syntax checks pass; branded PDF was generated and visually inspected. The full frontend production build was **not completed** here because npm packages could not be fetched in the build environment. Local LLM inference was **not** exercised against a running Ollama server, although the tool-routing logic was tested using a mocked model output.
+
+See [PHASE13_CHANGELOG.md](PHASE13_CHANGELOG.md). No database, password, or API key is included in the ZIP.
+
+---
+
+# CampusFlow — Phase 12: Professional Interface & Workflow Upgrade
+
+**Full-stack academic workspace:** React + FastAPI + SQLite + academic reports + AI assistant + ML demo.
+
+This package extends **Phase 11** with a more professional, consistent interface and useful daily-work features while preserving all earlier capabilities and the same local database format.
+
+### Highlights
+
+- **Global search / command menu:** press `Ctrl + K` (or click the top search), type a name, student ID, or page title, and press Enter to open it.
+- **Student profile drawer:** click a student's name in Overview or Students to inspect individual marks and attendance; administrators can record a result directly from the drawer.
+- **Dashboard action insights:** live, accurate record-quality indicators for missing marks, missing attendance, and attendance under 75%.
+- **Preferences:** Sidebar → Preferences; compact tables, reduced animations, and a toggle for the welcome panel. These settings are local to your browser.
+- **Visual refresh:** coordinated sidebar, spacing, cards, table headers, focus states, and mobile search.
+
+### Install on Windows (keep your existing data)
+
+1. Stop the Phase 11 FastAPI and Vite terminals using `Ctrl + C`.
+2. Locate `students.db` from your **running Phase 11** project's `campusflow` folder. Make a backup copy before updating. This file contains student records and local login accounts. If you have a `STUDENTS_DB` environment setting, use that location instead.
+3. Extract `CampusFlow_Phase12_Professional_UI.zip` so you have a folder containing `campusflow/backend` and `campusflow/frontend`.
+4. Copy **your existing** `students.db` into the **new** `campusflow` folder (beside `backend` and `frontend`). **Do not** put it inside `backend` or `frontend`. Do not run `create_admin.py` again.
+5. Open the new `campusflow` folder in VS Code. In **Terminal 1**:
+
+```powershell
+cd backend
+python -m pip install -r requirements.txt
+python -m uvicorn main:app --reload
+```
+
+6. From the new `campusflow` folder, open **Terminal 2**:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+7. Open `http://localhost:5173` and sign in with the **same admin username and password**. Try `Ctrl+K`, click a student name, open Preferences, and check the Dashboard insights.
+
+> If your terminal starts in the outer ZIP extraction folder, enter `campusflow` first. The frontend has to contain `package.json`; the backend has to contain `main.py`.
+
+### Testing and limitations
+
+Run backend tests from `campusflow/backend`:
+
+```powershell
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Run the full frontend production build from `campusflow/frontend`:
+
+```powershell
+npm run build
+```
+
+The CSS and JSX have been syntax-checked, and all 19 existing backend tests passed. A complete production frontend build could not be performed in the development environment due to unavailable npm network access. The UI improvements are real functionality but are **not a cloud deployment**; they run in your existing local app.
+
+See [`PHASE12_CHANGELOG.md`](PHASE12_CHANGELOG.md) for the feature-by-feature record.
+
+---
+
 # CampusFlow — Phase 11: Machine Learning Performance Prediction
 
 **Full-stack academic management application:** React + Vite + Tailwind CSS + Recharts + FastAPI + SQLite + ReportLab + scikit-learn.
