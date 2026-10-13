@@ -13,7 +13,8 @@ from typing import Literal
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, FileResponse
+from fastapi.staticfiles import StaticFiles
 from reports import report_analytics, student_report, summary_pdf, student_pdf, summary_csv
 from academic_assistant import PROMPTS, ADMIN_PROMPTS, answer_question, optionally_polish_aggregate
 from phase13 import (setup_phase13_tables, CalendarEvent, BrandingUpdate,
@@ -120,7 +121,19 @@ def current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bear
         """, (token_digest(credentials.credentials), now())).fetchone()
     if row is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid", headers={"WWW-Authenticate": "Bearer"})
-    return account_view(row)
+    result = account_view(row)
+    # Optional public demo account: this existing teacher account is fully read-only.
+    # Only configure this for a database containing fictional/public-safe records.
+    viewer_username = os.getenv('CAMPUSFLOW_PUBLIC_VIEWER_USERNAME', '').strip()
+    result['read_only'] = bool(viewer_username and row['role'] == 'teacher'
+                               and row['username'].casefold() == viewer_username.casefold())
+    return result
+
+
+def require_edit_user(user=Depends(current_user)):
+    if user.get('read_only'):
+        raise HTTPException(status_code=403, detail='Public demo account is read-only')
+    return user
 
 
 def require_admin(user=Depends(current_user)):
@@ -157,7 +170,11 @@ def login(payload: LoginPayload):
                 conn.execute("DELETE FROM sessions WHERE user_id=? OR expires_at<=?", (row["id"], now()))
                 conn.execute("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
                              (token_digest(token), row["id"], now()+SESSION_TTL_SECONDS))
-                result = {"access_token": token, "token_type": "bearer", "user": account_view(row)}
+                login_user = account_view(row)
+                login_user['read_only'] = bool(os.getenv('CAMPUSFLOW_PUBLIC_VIEWER_USERNAME', '').strip()
+                    and row['role'] == 'teacher'
+                    and row['username'].casefold() == os.getenv('CAMPUSFLOW_PUBLIC_VIEWER_USERNAME','').strip().casefold())
+                result = {"access_token": token, "token_type": "bearer", "user": login_user}
             else:
                 attempts = row["attempts"] + 1
                 locked_until = now()+LOCK_SECONDS if attempts >= MAX_FAILED_LOGINS else 0
@@ -299,6 +316,9 @@ def grade(score: float) -> str:
 
 @app.get("/api/health")
 def health():
+    """Readiness check: ensure SQLite can actually be opened and queried."""
+    with db() as conn:
+        conn.execute("SELECT 1").fetchone()
     return {"status": "ok"}
 
 
@@ -360,7 +380,7 @@ def list_marks(user=Depends(current_user)):
 
 
 @app.post("/api/marks")
-def save_marks(payload: MarksPayload, user=Depends(current_user)):
+def save_marks(payload: MarksPayload, user=Depends(require_edit_user)):
     with db() as conn:
         student_or_404(conn, payload.student_id)
         existing = conn.execute("SELECT id FROM marks WHERE student_id=? AND LOWER(subject)=LOWER(?) AND semester=? ORDER BY id LIMIT 1",
@@ -385,7 +405,7 @@ def list_attendance(user=Depends(current_user)):
 
 
 @app.post("/api/attendance")
-def save_attendance(payload: AttendancePayload, user=Depends(current_user)):
+def save_attendance(payload: AttendancePayload, user=Depends(require_edit_user)):
     with db() as conn:
         student_or_404(conn, payload.student_id)
         existing = conn.execute("SELECT id FROM attendance WHERE student_id=? AND date=? ORDER BY id LIMIT 1",
@@ -732,3 +752,22 @@ def delete_branding_logo(admin=Depends(require_admin)):
     with db() as conn:
         conn.execute('UPDATE report_branding SET logo_png=NULL WHERE id=1')
     return {'message': 'Logo removed'}
+
+
+# Production hosting: Vite is built in the Docker frontend stage. The API and
+# React SPA share the same origin, so browsers need no cross-origin API settings.
+# In local development (no dist folder), Vite continues to run separately.
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if (FRONTEND_DIST / "index.html").is_file():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="frontend-assets")
+
+    @app.get("/", include_in_schema=False)
+    def frontend_index():
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-store"})
+
+    @app.get("/{frontend_path:path}", include_in_schema=False)
+    def frontend_router(frontend_path: str):
+        if frontend_path == "api" or frontend_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        # React routes can all load the SPA shell; files are not served here.
+        return FileResponse(FRONTEND_DIST / "index.html", headers={"Cache-Control": "no-store"})

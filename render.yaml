@@ -1,0 +1,27 @@
+# Render Blueprint — persistent disk is a PAID Render feature.
+# Deploy from the repository root, which contains the campusflow/ folder.
+services:
+  - type: web
+    name: campusflow-portfolio
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./campusflow/Dockerfile
+    dockerContext: ./campusflow
+    healthCheckPath: /api/health
+    envVars:
+      - key: STUDENTS_DB
+        value: /data/students.db
+      - key: CAMPUSFLOW_BOOTSTRAP_DEMO
+        value: '1'
+      - key: CAMPUSFLOW_ADMIN_USERNAME
+        sync: false
+      - key: CAMPUSFLOW_ADMIN_PASSWORD
+        sync: false
+      - key: CAMPUSFLOW_PUBLIC_VIEWER_USERNAME
+        value: demo
+      - key: CAMPUSFLOW_VIEWER_PASSWORD
+        sync: false
+    disk:
+      name: campusflow-data
+      mountPath: /data
+      sizeGB: 1

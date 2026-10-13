@@ -1,15 +1,19 @@
-students.db
-students.json
-__pycache__/
-*.pyc**/*.db
+# Personal data and credentials - applies across the full repository
+**/students.db
+**/*.db
 **/*.db-*
 **/*.sqlite
 **/*.sqlite3
-**/*.csv
-**/*.xlsx
+**/*.db-journal
 **/.env
 **/.env.*
+!**/.env.example
 **/node_modules/
-**/__pycache__/
-**/.venv/
 **/dist/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+# Real student CSV or XLSX should never be committed
+**/*.csv
+**/*.xlsx
+!campusflow/examples/student_import_template.csv

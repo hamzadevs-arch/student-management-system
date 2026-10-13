@@ -1,249 +1,94 @@
-# Student Management System
+# CampusFlow — Academic Management Dashboard
 
-A Python-based Student Management System developed step by step, starting with basic CRUD operations and progressing to a desktop application with a graphical user interface.
+A full-stack academic administration portfolio project built with **React, Vite, FastAPI, and SQLite**.
 
-The project uses Python, SQLite, Object-Oriented Programming (OOP), and Tkinter to manage student records, academic marks, attendance, and performance reports.
+> **Status:** Phase 13 features complete; production-preparation pack includes GitHub Actions and a Render/Docker deployment blueprint. This repository is not automatically deployed. The assistant is **offline and database-powered**, not a trained LLM. Predictions based on fictional training data are identified as a demonstration.
 
 ## Features
 
-- Add new students
-- View all student records
-- Search students by ID
-- Update student information
-- Delete student records
-- Store student information permanently
-- Add and update subject marks
-- Record daily attendance
-- Generate student performance reports
-- Calculate average marks and grades
-- Calculate attendance percentages
-- Manage records through a desktop GUI
+| Area | Capabilities |
+| --- | --- |
+| Student management | Search, create, update, delete, student profile drawer |
+| Academic records | Record and review grades/marks and attendance |
+| Reporting | Analytics, CSV exports, branded PDF summaries |
+| Smart campus | Excel/CSV student import, academic calendar, university branding |
+| Assistant | Approved, read-only questions against live SQLite records |
+| ML lab | Synthetic-data demonstration and optional historical-data training |
+| Access control | Administrator and teacher roles; optional read-only public demo |
+| User experience | Responsive layout, global search (`Ctrl+K`), display preferences |
 
-## Project Development Phases
+The original introductory CLI student-management exercises may also exist elsewhere in this repository. The current full-stack application is in [`campusflow/`](campusflow/).
 
-### Phase 1 — Basic Student Management System
+## Tech stack
 
-Developed a command-line application using Python fundamentals.
+- React 19, Vite 7, Tailwind CSS, Recharts, Lucide icons
+- FastAPI, Pydantic, Python 3.11+, SQLite, ReportLab, scikit-learn
+- Pytest for backend tests, GitHub Actions for continuous integration
+- Docker multi-stage build for a single-origin production service
 
-**Features:**
-- Add students
-- View students
-- Search students
-- Update student information
-- Delete students
+## Quick start (Windows PowerShell)
 
-**Concepts Used:** Python lists, dictionaries, functions, loops, conditional statements, and user input.
-
-In this phase, student data was stored temporarily in a Python list.
-
-### Phase 2 — JSON File Storage
-
-Implemented permanent data storage using JSON.
-
-**Features:**
-- Save student information to a JSON file
-- Load saved records when the application starts
-- Automatically save changes after adding, updating, or deleting students
-- Handle missing JSON files using exception handling
-
-**Concepts Used:** JSON, file handling, `json.load()`, `json.dump()`, and `try/except`.
-
-### Phase 3 — SQLite Database Integration
-
-Replaced JSON storage with SQLite for database management.
-
-**Features:**
-- Create a SQLite database
-- Create a students table
-- Insert student records
-- Retrieve student information
-- Update existing records
-- Delete records
-- Search students using SQL queries
-
-**Concepts Used:** SQLite, SQL, database connections, cursors, `INSERT`, `SELECT`, `UPDATE`, and `DELETE`.
-
-### Phase 4 — Object-Oriented Programming
-
-Refactored the application using Python OOP principles.
-
-**Features:**
-- Created a `Database` class for database operations
-- Created a `StudentManagementSystem` class
-- Organized functionality into reusable methods
-- Improved code organization and maintainability
-
-**Concepts Used:** Classes, objects, constructors, methods, `self`, and encapsulation of functionality.
-
-### Phase 5 — Marks, Attendance, and Reports
-
-Extended the application with academic management features.
-
-**Features:**
-- Add and update student marks
-- Record daily attendance
-- Store marks and attendance in SQLite tables
-- Calculate average marks
-- Assign grades based on marks
-- Calculate attendance percentages
-- Generate individual student performance reports
-
-**Concepts Used:** Database relationships, SQL queries, conditional statements, loops, calculations, and Python's `datetime` module.
-
-### Phase 6 — Graphical User Interface
-
-Introduced a desktop GUI using Python Tkinter.
-
-**Features:**
-- Student registration form
-- Student records displayed in a table
-- Buttons for adding, searching, updating, and deleting students
-- Marks and attendance management
-- Performance report functionality
-- SQLite database integration
-
-**Concepts Used:** Tkinter, GUI programming, event handling, widgets, and database integration.
-
-## Technologies Used
-
-| Technology | Purpose |
-|---|---|
-| Python | Main programming language |
-| SQLite | Database management |
-| Tkinter | Desktop graphical interface |
-| JSON | File-based storage in Phase 2 |
-| OOP | Application structure |
-| Git | Version control |
-| GitHub | Source code hosting |
-
-## Project Structure
-
-```text
-student-management-system/
-│
-├── student_management.py
-├── gui.py
-├── students.db
-├── students.json
-├── .gitignore
-└── README.md
+```powershell
+cd campusflow\backend
+python -m pip install -r requirements.txt
+python create_admin.py  # First installation ONLY; do not run against an existing account
+python -m uvicorn main:app --reload
 ```
 
-**File Descriptions:**
+Open a **second** terminal, from the Git repository root:
 
-- `student_management.py` — Command-line Student Management System
-- `gui.py` — Desktop application using Tkinter
-- `students.db` — SQLite database, generated locally
-- `students.json` — JSON data file from Phase 2
-- `.gitignore` — Excludes local data and generated files from Git
-- `README.md` — Project documentation
-
-The database and JSON files may not appear on GitHub because they are excluded using `.gitignore`.
-
-## Installation and Setup
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/hamzadevs-arch/student-management-system.git
+```powershell
+cd campusflow\frontend
+npm install
+npm run dev
 ```
 
-### 2. Open the Project Folder
+Go to **http://localhost:5173**. The API is available at **http://127.0.0.1:8000/api/health**.
 
-```bash
-cd student-management-system
+If you have an existing `campusflow/students.db`, **back it up and retain it**. Never run `create_admin.py` to replace an existing admin account. The database is excluded from Git.
+
+## Automated checks
+
+```powershell
+cd campusflow\backend
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
-### 3. Run the Command-Line Application
+Frontend:
 
-```bash
-python student_management.py
+```powershell
+cd campusflow\frontend
+npm install
+npm run build
 ```
 
-### 4. Run the Desktop GUI
+The GitHub Actions workflow in [`.github/workflows/campusflow-ci.yml`](.github/workflows/campusflow-ci.yml) performs both checks on new pushes and pull requests.
 
-```bash
-python gui.py
-```
+## Deployment and demo
 
-**Requirements:**
+See [**Deployment guide**](campusflow/DEPLOYMENT.md). The prepared `render.yaml` uses a paid Render service with a **persistent disk**; it does not silently use volatile storage. It can bootstrap a separate database populated exclusively with **fictional demo student data** and an optional read-only visitor account.
 
-- Python 3.10 or later
-- Tkinter support in your Python installation
+> **Privacy:** Never push `students.db`, real student details, account passwords, `.env` files, or student exports into a public repository. Do not upload your own 200-student local database as part of the public demo. Public viewers must never receive the administrator password.
 
-SQLite, JSON, and Tkinter are part of Python's standard library on most desktop installations. No additional pip packages are required.
+## Screenshots
 
-The SQLite database and its tables are created automatically when the application initializes.
+Screenshots are not pre-generated in this package. Capture actual images from the app after it runs, using only fictional demo records. Suggested frames and locations: [`campusflow/docs/screenshots/README.md`](campusflow/docs/screenshots/README.md).
 
-## Example Student Record
+## Documentation
 
-```text
-Student ID: 101
-Name: Ali
-Age: 20
-Email: ali@example.com
-Course: Computer Science
-```
+- [CampusFlow application and development instructions](campusflow/README.md)
+- [Deployment / Docker / Render](campusflow/DEPLOYMENT.md)
+- [Manual QA checklist](campusflow/docs/QA_CHECKLIST.md)
+- [Phase history](campusflow/docs/PHASE_HISTORY.md)
 
-## Example Performance Report
+## Limitations
 
-```text
---- Student Performance Report ---
+- SQLite + a single persistent disk is appropriate for a small portfolio demonstration, **not** a multi-instance production university service.
+- The academic assistant supports a defined set of live-data queries; it is not a general-purpose conversational AI.
+- Predicted grades are exploratory estimates. No grades are generated for real students from fictional training data.
+- Frontend production build and cloud deployment must be verified in GitHub Actions/on the cloud host.
 
-Student ID: 101
-Name: Ali
-Course: Computer Science
+---
 
---- Marks ---
-Python: 90
-Database: 85
-Networking: 80
-
-Average Marks: 85.0
-Grade: A
-
---- Attendance ---
-Total Days: 20
-Present Days: 18
-Attendance Percentage: 90.0%
-```
-
-*The report above uses example data.*
-
-## What I Learned
-
-Through this project, I practiced:
-
-- Writing Python programs using functions and loops
-- Working with lists and dictionaries
-- Reading and writing JSON files
-- Performing CRUD operations using SQL
-- Connecting Python applications to SQLite
-- Applying Object-Oriented Programming principles
-- Handling user input and exceptions
-- Building graphical interfaces with Tkinter
-- Generating academic performance reports
-- Using Git and GitHub for version control
-
-## Future Improvements
-
-- Add login and authentication
-- Improve input validation
-- Add automated testing
-- Export student reports to PDF
-- Add charts for academic performance
-- Improve the GUI design
-- Add search filters and sorting
-- Package the application as a desktop executable
-
-## Author
-
-**Muhammad Hamza**
-
-GitHub: [hamzadevs-arch](https://github.com/hamzadevs-arch)
-
-## Project Status
-
-Phase 6 — Desktop GUI implementation.
-
-This project was developed incrementally as a Python learning and portfolio project. Further improvements and testing are planned.
+**Portfolio project:** CampusFlow — React + FastAPI full-stack academic workspace.

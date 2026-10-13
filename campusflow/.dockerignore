@@ -1,0 +1,15 @@
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+**/node_modules/
+**/dist/
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite3
+**/*.csv
+**/*.xlsx
+.git/
+.github/
